@@ -1,0 +1,443 @@
+---
+title: "Week-04-Notes"
+author: "Andrew Nalundasan"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Week 4 Overview Video
+
++ Housekeeping announcements. Nothing that I don't know already.
++ Professionalism
+
+    + Must present results from queries in a professional manner
+    + Always best practice to throw on an ORDER BY 
+        + Best practice to ORDER BY column name rather than column number/position
+    + Always best practice to include extra columns that provide more context 
+    
++ Queries
+
+    + Always best to breakdown complex queries into smaller chunks (sub-queries)
+    + be intentional with parantheses ()
+
+
+# 04-01: Chp 10 UNION
+
+## UNION
+
++ UNION <- Combines ROWs from 2 or more data sets
+
+    + Comparable data sets
+        + Same number of columns (usually)
+        + Same data types in columns (usually)
+        + SQL Server supports "dissimilar" data sets
+    + NOT
+        + Not a JOIN
+        + Not an INTERSECT
+        + Not an INCLUDE / EXCLUDE
+    + UNION is a combination to make 1 new data set
+    
++ Archive storage <- data warehouse
++ Compared to JOIN
+
+    + expectation is that each column has the same type of data 
+    + UNION is stacking the two tables on top of each other
+    + JOIN is combining the two tables to make a new dataset
+
+![](JOIN_vs_UNION.png)
+
+## UNION BUILDING
+
++ Data sets created with usual SELECT statement
+
+    + Simple
+    + Complex
+
++ Column names?
+
+    + uses the column header names in the First SELECT statement
+    + Must spend time to make sure they are properly labeled
+    
++ UNION
+
+    + UNION performs DISTINCT by default
+        + based upon actual values
+    + UNION ALL keeps duplicates
+    + If you know there are no DUPS between 2 tables, use UNION ALL <- better performance
+        + either you know there are no duplicates
+        + or you want the duplicates
+        
++ Example
+
+    + SELECT ProductID, Name, ProductNumber
+      FROM Production.Product
+      WHERE ProductNumber LIKE 'BK-M%'
+      UNION
+      SELECT ProductID, Name, ProductNumber
+      FROM Production.Product
+      WHERE ProductNumber LIKE 'BK-R%';
+      
++ Practice using Sales Order and Bowling DB's
+
+## UNION COMPLEX
+
++ I want to analyze all the purchase orders with their detail lines, which includes all the lines from both the original purchase order and any purchase order changes
+
+    + Common to track change orders to the original purchase order
+    + leads to tracking % growth
+
+![](PO_Lines.png)
+
++ A single PO could have multiple changes
++ A PO Change introduces multiple PO Lines ('POChgID')
+
++ PO Analysis
+
+    + # get the original PO lines
+    SELECT po1.PONumber, 'Original' AS POType,
+      po1.PODescription, po1.OrderDate AS PODate, 
+      pol.LineNumber, pol.LineDescription, polQuantity
+    FROM POHeaders AS po1 INNER JOIN POLines AS pol ON po1.POID = pol.POID  # this gives everything from PO whether it's a change order or OG
+    WHERE pol.POChgID IS NULL  # this gives me only the original lines
+    
+    UNION ALL 
+    
+    + # get all the change lines
+    SELECT po2.PONumber, 'Chg NO: ' + poc.POChgNumber AS POType, 
+      poc.ChgDescription, poc.ChgDate,
+      pol.LineNumber, pol.LineDescription, pol.Quantity
+    FROM POHeaders AS po2
+    INNER JOIN POChanges AS poc ON po2.POID = poc.POID
+    INNER JOIN POLines AS pol2 ON poc.POChgID = pol2.POChgID
+    
+    ORDER BY PONumber, POType, LineNumber; (ORDER BY 1, 2, 5)
+    
++ Possible
+
+    + Complex SELECTs are fine
+        + JOINs of all types
+        + Filtering with WHERE
+        + Should be able to run independently
+    + UNION ALL
+        + More efficient than UNION
+    ORDER BY must be at the end
+        + Use column names 
+
+# 04-02: Chp 11 SubQuery Part 1
+
++ Creating solutions rather than just pulling data
+
+## SubQuery Overview
+
++ Subqueries aka "nested query"
+
+    + process of including a SELECT statement
+    + Inside
+        + SELECT (INSERT, UPDATE, and DELETE)
+        + FROM
+        + WHERE
+    + SQL is declarative, so the DBMS will figure it out. Don't need to worry about the order of things
+    
++ Table subquery
+
+    + Returns multiple columns and rows
+    + Often used in WHERE clauses
+    + Also in SELECT clauses for aggregates
+
++ Scalar subquery
+
+    + Returns only 1 column and 1 row (aka a value)
+
++ Row subquery (not typically supported)
+
++ Why do subqueries?
+
+    + answer complex questions with simpler statements
+    + filter data with data from tables not used elsewhere
+    + improve query performance
+    + cleaner SQL statements and cleaner solutions
+    + help with debugging
+    
++ SELECT
+
+    + SELECT OrderNumber, OrderDate,
+      (
+      SELECT c.CustLastName
+      FROM Customers AS c
+      WHERE c.CustomerID = o.CustomerID
+      ) AS LastName
+    FROM Order AS o;
+    
++ FROM
+
+    + SELECT a.lname, a.fname, t.tile
+      FROM 
+      (
+      SELECT lname, fname, authorid
+      FROM authors
+      WHERE state = 'CA'
+      ) AS a  # this SELECT on California authors is a "virtual table"
+    INNER JOIN titles AS t
+    ON a.authorid = t.authorid;
+      
++ WHERE
+
+    + SELECT c.first_name, c.last_name, c.city
+      FROM Customers AS c
+      WHERE customer_ID IN
+        (
+        SELECT customer_id
+        FROM orders AS o
+        WHERE YEAR(order_date) = 2019
+        );
+
+## SELECT - Subquery Overview
+
++ Use Cases
+
+    + Allows the creation of unique Expressions in the SELECT clause
+        + Always a SCALAR subquery (1 row, 1 column; 1 single value. Not a whole set of columns)
+        + Avoid overly complex INNER and OUTER JOINs
+        + Focus on single column instead
+        + easier to debug
+        
++ Column - INNER JOIN
+
+    + SELECT o.OrderNumber, 
+        c.CustLastName AS LastName,
+        o.OrderDate, o.ShipDate
+      FROM Order AS o
+      INNER JOIN Customers AS c
+      ON c.CustomerID = o.CustomerID
+      WHERE o.ShipDate = '2020-04-10';
+    + List order and customers from yesterday
+    + SELECT o.OrderNumber,
+      (
+      SELECT c.CustLastName
+      FROM Customers AS c
+      WHERE c.CustomerID = o.CustomerID
+      ) AS LastName,  # this query happens for each row that's selected in o.OrderNumber
+      o.OrderDate, o.ShipDate
+    FROM Order AS o
+    WHERE o.ShipDate = '2020-04-10'; 
+
+## SELECT Subquery Examples
+
++ COLUMNS: "list order and customers (AND status) from yesterday"
+
++ SELECT o.OrderNumber, o.OrderDate, o.ShipDate
+      (
+      SELECT 
+        c.CustLastName + '-Active: '+ 
+        IIF(c.Active,'Yes', 'No') AS CustNameStatus
+      FROM Customers AS c
+      WHERE c.CustomerID = o.CustomerID
+      ) AS CustNameStatus,  # this query happens for each row that's selected in o.OrderNumber
+    FROM Order AS o
+    WHERE o.ShipDate = '2020-04-10'; 
+    
++ Expression
+
+    + List all orders and the maximum price from all line items in the order.
+    + Of all the lines within the order, what's the max price?
+    SELECT order_id, order_date,
+      (
+      SELECT MAX(list_price)  # must return single value
+      FROM Sales.order_items AS i
+      WHERE i.order_id = o.order_id
+      ) AS max_list_price
+    
+    FROM sales.Orders AS o
+    ORDER BY order_date desc;
+    
+    + List employees, salaries, average overall salary, and the difference
+    SELECT e.employee_id, e.first_name, e.last_name, e.salary,
+      (
+      SELECT ROUND(AVG(salary), 0)
+      FROM employees
+      ) AS average_salary,
+      
+      e.salary - (SELECT ROUND(AVG(salary), 0)  # must repeat calculation in this subquery - can't call 'average_salary'
+        FROM employees) AS difference
+        
+      FROM employees AS e
+      ORDER BY first_name, last_name
+      
+    + compare departments in previous question
+    SELECT e.employee_id, e.first_name, e.last_name, e.salary,
+      (
+      SELECT ROUND(AVG(salary), 0)
+      FROM employees AS e1
+      WHERE e1.DepartmentID = e.DeaprtmentID
+      ) AS average_dept_salary,
+      
+      e.salary - (SELECT ROUND(AVG(salary), 0)  # must repeat calculation in this subquery - can't call 'average_salary'
+        FROM employees AS e2
+        WHERE e2.DepartmentID = e.DepartmentID
+        ) AS difference
+        
+      FROM employees AS e
+      ORDER BY first_name, last_name
+
+## SELECT - SubQuery Hands On
+
++ Practice SELECT subqueries on virtual desktop
+
+## FROM Subquery Overview
+
++ Subquery in the FROM clause is creating a dataset that combines information from multiple tables, creating a "virtual table"
++ Uses
+
+    + allows the creation and use of a "virtual" table in the FROM clause
+    + way to gather data from multiple sources without using INNER and OUTER JOINs
+    + easier to debug
+    
++ Example
+
+    + List mountain bike current and historical quantity sold by Product number and Model
+    
+    SELECT p.ProductNumber, m.ModelName, p.QtySold, p.When
+    FROM
+        (
+        SELECT ProductNumber, ModelID, SUM(QtySold) AS QtySold, 'Current' AS [When]
+        FROM ProductSales
+        WHERE ProductNumber LIKE 'BK-M%'
+        GROUP BY 1, 2
+        
+        UNION ALL
+        
+        SELECT ProductNumber, ModelID, SUM(QtySold) AS QtySold, 'Archive' AS [When]
+        FROM ProductSalesArchive
+        WHERE ProductNumber LIKE 'BK-M%'
+        GROUP BY 1, 2
+        ) AS p
+    INNER JOIN Production.Model AS m
+    ON p.ModelID = m.ModelID;
+
+# 04-02: Chp 11 SubQuery Part 2
+
++ Example: List crimes and totals for those days
+
+    SELECT c.*, subq.incidents  # c.* <- all information on crimes from c table
+    FROM Crimes AS c
+    INNER JOIN
+        (
+        SELECT date, COUNT(incident_num) AS [incidents]
+        FROM Crimes
+        GROUP BY date
+        ) AS subq
+    ON c.date = subq.date  # inner join on date
+    ORDER BY subq.incidents DESC, c.time
+    
+    + use a table twice to get information from it
+
+## FROM Subquery Examples
+
++ Example: Show the number of activities for each person by group they participate in 
+
+    SELECT p.first_name, p.last_name,
+           a.id_group, a.numActivities
+    FROM Person AS p
+    INNER JOIN
+        (
+        SELECT id_person, id_group, COUNT(*) AS numActivities
+        FROM Activity
+        GROUP BY id_person, id_group
+        ) AS a
+    ON (a.id_person = p.id_person)
+    
+    + makes more sense to add the subquery in the FROM clause to bring more than 1 column into the SELECT
+    + if making the subquery in the SELECT clause, it must be scalar, so only 1 column can be selected at a time
+    + having the subquery in the FROM clause enables you to generate more columns to bring into the SELECT
+
+## FROM Subquery Hands On
+
++ Practice in SQL Server
+
+## WHERE Subquery Overview
+
++ Uses
+
+    + allows the creation and use of a "virtual" table in the WHERE clause
+    + smooth way to perform filtering without cluttering up the FROM clause
+    + easier to debug
+    + can improve performance
+    
++ WHERE
+
+    + List customers from WA, OR, and CA
+    
+    SELECT CustomerName, OrderNumber, OrderDate,
+    FROM Orders AS o
+    INNER JOIN Customers AS c
+    ON c.Customer_ID = o.Customer_ID
+    WHERE c.State IN ('WA', 'OR', 'CA');
+    
+    + Subquery:
+    
+    SELECT CustomerName, OrderNumber, OrderDate,
+    FROM Orders AS o
+    WHERE Customer_ID IN
+        (
+        SELECT Customer_ID
+        FROM Customers
+        WHERE State IN ('WA', 'OR', 'CA')
+        );
+    
+
+## WHERE Subquery Examples
+
++ List last month's Orders for NY customers
+
+    SELECT Order_ID, Order_Date, Customer_ID
+    FROM Sales.Order AS s
+    INNER JOIN Sales.Customer AS c
+    ON s.Customer_ID = c.Customer_ID
+    WHERE c.City = 'New York'
+    AND c.Order_Date BETWEEN ('2020-04-01' AND '2020-04-30');
+    
+    + Subquery on WHERE:
+    
+    SELECT Order_ID, Order_Date, Customer_ID
+    FROM Sales.Order
+    WHERE Customer_ID IN
+        (
+        SELECT Customer_ID
+        FROM Sales.Customers
+        WHERE Customer_City = 'New York'
+        )
+    AND c.Order_Date BETWEEN ('2020-04-01' AND '2020-04-30');
+    
++ Show students with a current score of 90% or higher
+
+    SELECT s.studentid, s.name, m.points
+    FROM Student AS s
+        INNER JOIN 
+        (SELECT studentid, SUM(scores) as points
+        FROM Grades GROUP BY 1) AS g
+        ON s.studentid = g.studentid
+    WHERE g.points > 
+        (
+        SELECT (SUM(a.pointspossible) * 0.9) AS Current90  # this creates single value
+        FROM Assignments AS a
+        WHERE a.duedate <= Date()
+        ) AS Current90;
+        
+    + makes sense to do subquery in WHERE clause because no reason to bring Assignments table into FROM clause
+        + do analysis on Assignments table first to generate a target to filter on 
+        
++ WHERE EXISTS
++ WHERE IN
+
+## WHERE Subquery Hands On
+
++ Practice in AdventureWorks2012
