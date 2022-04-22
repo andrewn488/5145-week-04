@@ -441,3 +441,17 @@ knitr::opts_chunk$set(echo = TRUE)
 ## WHERE Subquery Hands On
 
 + Practice in AdventureWorks2012
+
+## Midterm
+
++ Essay questions - keep it concise and brief (4-5 questions)
++ True/False questions - week 1 videos
++ SQL Queries - all related directly to the chapters working with AdventureWorks
++ Timing - 3 days to complete
+
+## DTC
+
++ Dim <- Dimensions
++ FACT <- Facts
++ Datawarehouse - de-normalized data 
++ More about bringing the information together
